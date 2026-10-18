@@ -40,7 +40,7 @@ pub use kdf::{Passphrase, Strength, passphrase_strength};
 pub use kex::{Identity, Role, Signer};
 pub use kms::{KeyRecord, KeyStore};
 pub use secret::{Key32, Secret, random_bytes};
-pub use session::{Handshake, Hello, SessionKeys};
+pub use session::{Handshake, Hello, ReplayGuard, SessionKeys};
 
 /// Crate-wide protocol version. Bumped when the wire format changes.
 pub const PROTOCOL_VERSION: u16 = 3;

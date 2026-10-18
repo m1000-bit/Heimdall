@@ -11,12 +11,19 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Exposes an in-process duplex transport. Used by tests and by the single-process
+# development mode where Core and Sentinel run in one binary.
+in-memory = []
+
 [dependencies]
 heimdall-crypto.workspace = true
 thiserror.workspace = true
 bytes.workspace = true
+zeroize.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros", "net", "io-util", "time"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "io-util", "time"] }

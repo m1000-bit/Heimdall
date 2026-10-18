@@ -133,7 +133,7 @@ impl Role {
     }
 
     #[must_use]
-pub const fn flip(self) -> Self {
+    pub const fn flip(self) -> Self {
         match self {
             Self::Initiator => Self::Responder,
             Self::Responder => Self::Initiator,
