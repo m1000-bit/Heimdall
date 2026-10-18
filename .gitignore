@@ -1,0 +1,20 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# Local key material and runtime state MUST never enter version control.
+*.key
+*.pem
+*.secret
+keys/
+state/
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
