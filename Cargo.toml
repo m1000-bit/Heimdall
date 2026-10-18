@@ -50,6 +50,7 @@ egui-wgpu = "0.31"
 egui_extras = "0.31"
 wgpu = "26"
 pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

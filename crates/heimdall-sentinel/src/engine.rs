@@ -153,6 +153,17 @@ impl Engine {
     pub fn alerts_emitted(&self) -> u64 {
         self.alerts_emitted
     }
+
+    /// Forgets every learned baseline, so the next samples rebuild from cold.
+    ///
+    /// This is how an operator accepts that the machine has genuinely changed,
+    /// rather than continuing to treat the new normal as an attack. It has to
+    /// be a deliberate call: while a baseline is frozen on alert, a real
+    /// regime change keeps alerting, and silently forgetting that would train
+    /// the detector out of noticing.
+    pub fn reset_streams(&mut self) {
+        self.anomaly.reset_all();
+    }
 }
 
 fn severity_for(magnitude: f64) -> Severity {

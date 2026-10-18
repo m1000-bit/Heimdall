@@ -16,15 +16,18 @@ heimdall-crypto.workspace = true
 heimdall-core.workspace = true
 heimdall-ipc.workspace = true
 heimdall-sentinel.workspace = true
+
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
 eframe.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true
-egui_extras.workspace = true
 wgpu.workspace = true
-pollster.workspace = true
+bytemuck.workspace = true
 
 [features]
 default = []
+# Exposes the in-process duplex transport for a single-binary development mode.
+loopback = ["heimdall-ipc/in-memory"]

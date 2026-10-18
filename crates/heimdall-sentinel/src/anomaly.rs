@@ -285,6 +285,11 @@ impl AnomalyEngine {
         self.streams.remove(stream).is_some()
     }
 
+    /// Forgets every stream's baseline.
+    pub fn reset_all(&mut self) {
+        self.streams.clear();
+    }
+
     pub fn scanned(&self) -> u64 {
         self.scanned
     }
