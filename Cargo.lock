@@ -1670,7 +1670,10 @@ dependencies = [
  "heimdall-ipc",
  "serde",
  "serde_json",
+ "sha2",
+ "sha3",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
 ]
 
