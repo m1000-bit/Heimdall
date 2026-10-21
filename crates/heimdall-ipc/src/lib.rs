@@ -29,6 +29,8 @@ pub mod session;
 pub mod transport;
 
 pub use error::{Error, Result};
-pub use message::{CloseReason, ContainmentScope, Message, Severity};
+pub use message::{
+    CloseReason, ContainmentOrder, ContainmentRecommendation, ContainmentScope, Message, Severity,
+};
 pub use session::{Session, Side};
 pub use transport::{Listener, Stream};

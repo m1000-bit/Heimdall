@@ -206,7 +206,15 @@ mod platform {
     /// `$XDG_RUNTIME_DIR` when usable, otherwise a per-user directory under the
     /// temp dir. Falling back to a shared world-writable directory would let
     /// another local account pre-create the socket and impersonate Sentinel.
+    ///
+    /// An endpoint that starts with a path separator is a path, not a name, and
+    /// is used as it stands. A deployment needs this: the daemon may run as a
+    /// service account whose runtime directory is not the one an operator's
+    /// session uses, and the two have to be pointed at the same socket.
     pub(super) fn endpoint_path(endpoint: &str) -> PathBuf {
+        if endpoint.starts_with('/') {
+            return PathBuf::from(endpoint);
+        }
         if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
             if !dir.is_empty() {
                 return PathBuf::from(dir).join(format!("{endpoint}.sock"));
@@ -230,14 +238,48 @@ mod platform {
             .unwrap_or_else(|_| "default".into())
     }
 
+    /// The permissions the endpoint and the directory holding it are given.
+    ///
+    /// 0600 and 0700 by default: only the account the daemon runs as can
+    /// reach the socket. A deployment that runs the daemon as a service
+    /// account and the operator's tools as another account needs the two in
+    /// the same group, and can say so with `$HEIMDALL_SOCKET_MODE=660`. The
+    /// mode is applied to the socket and to the directory around it, so
+    /// loosening the socket without loosening the way in achieves nothing.
+    fn endpoint_modes() -> (u32, u32) {
+        let requested = std::env::var("HEIMDALL_SOCKET_MODE").ok();
+        socket_modes(requested.as_deref())
+    }
+
+    /// The modes for a requested mode, or the private ones when there is none.
+    fn socket_modes(requested: Option<&str>) -> (u32, u32) {
+        const DEFAULT_SOCKET: u32 = 0o600;
+        const DEFAULT_DIR: u32 = 0o700;
+        let text = match requested {
+            Some(text) => text,
+            None => return (DEFAULT_SOCKET, DEFAULT_DIR),
+        };
+        match u32::from_str_radix(text.trim(), 8) {
+            Ok(mode) if (1..=0o777).contains(&mode) => {
+                let socket = mode & 0o777;
+                (socket, (mode | 0o100) & 0o777)
+            }
+            // An unusable mode falls back to the safe one rather than to
+            // something permissive.
+            _ => (DEFAULT_SOCKET, DEFAULT_DIR),
+        }
+    }
+
     pub(super) async fn bind(endpoint: &str) -> Result<super::InnerListener> {
         use std::os::unix::fs::PermissionsExt as _;
 
         let path = endpoint_path(endpoint);
+        let (socket_mode, dir_mode) = endpoint_modes();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
-            // 0700: nobody but the owning user can traverse into this directory.
-            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+            // 0700 by default: nobody but the owning user can traverse into
+            // this directory.
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(dir_mode))?;
         }
         match std::fs::remove_file(&path) {
             Ok(()) => {}
@@ -251,7 +293,7 @@ mod platform {
         }
 
         let listener = UnixListener::bind(&path)?;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(socket_mode))?;
         Ok(super::InnerListener::Unix(listener))
     }
 
@@ -411,5 +453,48 @@ impl Inner {
 impl Stream {
     fn inner_for(endpoint: &str) -> Result<Inner> {
         Inner::from_client(endpoint)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_tests {
+    use super::platform::{endpoint_path, socket_modes};
+
+    #[test]
+    fn an_absolute_endpoint_is_a_path() {
+        assert_eq!(
+            endpoint_path("/run/heimdall/heimdall-sentinel.sock"),
+            std::path::PathBuf::from("/run/heimdall/heimdall-sentinel.sock")
+        );
+    }
+
+    #[test]
+    fn a_named_endpoint_is_not_a_path() {
+        let path = endpoint_path("heimdall-sentinel");
+        assert!(path.ends_with("heimdall-sentinel.sock"));
+        assert!(!path.starts_with('/'), "{path:?} was taken as a path");
+    }
+
+    #[test]
+    fn the_socket_is_private_by_default() {
+        let (socket, dir) = socket_modes(None);
+        assert_eq!(socket, 0o600);
+        assert_eq!(dir, 0o700);
+    }
+
+    #[test]
+    fn a_group_mode_opens_the_way_in_to_the_group() {
+        let (socket, dir) = socket_modes(Some("660"));
+        assert_eq!(socket, 0o660);
+        assert_eq!(dir, 0o770);
+    }
+
+    #[test]
+    fn an_unusable_mode_falls_back_to_the_private_one() {
+        for bad in ["", "  ", "rwx", "9999", "0777x"] {
+            let (socket, dir) = socket_modes(Some(bad));
+            assert_eq!(socket, 0o600, "{bad:?} was not refused");
+            assert_eq!(dir, 0o700, "{bad:?} was not refused");
+        }
     }
 }

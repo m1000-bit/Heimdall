@@ -3,6 +3,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("i/o error: {0}")]
+    Io(#[from] std::io::Error),
+
     #[error("key derivation failed: {0}")]
     KeyDerivation(String),
 

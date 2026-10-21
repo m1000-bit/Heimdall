@@ -174,6 +174,52 @@ impl Drop for Passphrase {
     }
 }
 
+/// The environment variable the keystore passphrase is read from.
+pub const PASSPHRASE_ENV: &str = "HEIMDALL_KEYSTORE_PASSPHRASE";
+
+/// The passphrase used when nothing else provides one.
+///
+/// Development only, and it says so: a deployment that forgets to set a
+/// passphrase gets a keystore anyone can open.
+pub const DEVELOPMENT_PASSPHRASE: &str = "heimdall-development";
+
+/// Reads the passphrase from the environment.
+///
+/// The order is the environment variable, then a systemd credential
+/// (`$CREDENTIALS_DIRECTORY/passphrase`), then the development default. The
+/// credential is the better choice on a system where every process can read
+/// another's environment: the file is owned by root, unreadable by others, and
+/// handed to this service alone.
+#[must_use]
+pub fn passphrase_from_environment() -> Passphrase {
+    let from_env = std::env::var(PASSPHRASE_ENV).ok().filter(|v| !v.is_empty());
+    let credential = std::env::var("CREDENTIALS_DIRECTORY")
+        .ok()
+        .filter(|d| !d.is_empty())
+        .and_then(|dir| std::fs::read(std::path::Path::new(&dir).join("passphrase")).ok());
+    choose_passphrase(from_env.as_deref(), credential.as_deref())
+}
+
+/// Picks the passphrase from what the environment offers.
+///
+/// Split out from [`passphrase_from_environment`] so the choice can be tested
+/// without touching the environment of the test process.
+fn choose_passphrase(from_env: Option<&str>, credential: Option<&[u8]>) -> Passphrase {
+    if let Some(value) = from_env
+        && !value.is_empty()
+    {
+        return Passphrase::from_utf8(value.as_bytes());
+    }
+    if let Some(bytes) = credential {
+        let text = String::from_utf8_lossy(bytes);
+        let text = text.trim_end_matches(['\r', '\n']);
+        if !text.is_empty() {
+            return Passphrase::from_utf8(text.as_bytes());
+        }
+    }
+    Passphrase::from_utf8(DEVELOPMENT_PASSPHRASE.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +260,40 @@ mod tests {
         assert_eq!(passphrase_strength("123456789012"), Strength::TooWeak);
         assert!(!passphrase_strength("hunter2").accepted());
         assert!(passphrase_strength("Tr0ub4dor&3xKcd!").accepted());
+    }
+
+    #[test]
+    fn the_passphrase_comes_from_the_environment_first() {
+        let p = choose_passphrase(Some("from-the-variable"), Some(b"from-the-credential\n"));
+        assert_eq!(
+            &p.as_bytes()[.."from-the-variable".len()],
+            b"from-the-variable"
+        );
+    }
+
+    #[test]
+    fn a_credential_is_used_when_the_variable_is_absent() {
+        let p = choose_passphrase(None, Some(b"from-the-credential\n"));
+        assert_eq!(
+            &p.as_bytes()[.."from-the-credential".len()],
+            b"from-the-credential"
+        );
+    }
+
+    #[test]
+    fn the_development_passphrase_is_the_last_resort() {
+        let p = choose_passphrase(None, None);
+        assert_eq!(
+            &p.as_bytes()[..DEVELOPMENT_PASSPHRASE.len()],
+            DEVELOPMENT_PASSPHRASE.as_bytes()
+        );
+
+        // An empty credential file is not a passphrase.
+        let p = choose_passphrase(None, Some(b"\n"));
+        assert_eq!(
+            &p.as_bytes()[..DEVELOPMENT_PASSPHRASE.len()],
+            DEVELOPMENT_PASSPHRASE.as_bytes()
+        );
     }
 
     #[test]

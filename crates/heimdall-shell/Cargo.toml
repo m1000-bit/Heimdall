@@ -16,8 +16,10 @@ heimdall-crypto.workspace = true
 heimdall-core.workspace = true
 heimdall-ipc.workspace = true
 heimdall-sentinel.workspace = true
+heimdall-voice.workspace = true
 
 anyhow.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

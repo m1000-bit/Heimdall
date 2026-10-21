@@ -27,6 +27,7 @@
 
 pub mod aead;
 pub mod error;
+pub mod identity;
 pub mod kdf;
 pub mod kex;
 pub mod kms;
@@ -36,7 +37,11 @@ pub mod util;
 
 pub use aead::{CipherKey, Sealed, Suite};
 pub use error::{Error, Result};
-pub use kdf::{Passphrase, Strength, passphrase_strength};
+pub use identity::{IDENTITY_LABEL, KeystoreLocation, PersistedIdentity};
+pub use kdf::{
+    DEVELOPMENT_PASSPHRASE, PASSPHRASE_ENV, Passphrase, Strength, passphrase_from_environment,
+    passphrase_strength,
+};
 pub use kex::{Identity, Role, Signer};
 pub use kms::{KeyRecord, KeyStore};
 pub use secret::{Key32, Secret, random_bytes};

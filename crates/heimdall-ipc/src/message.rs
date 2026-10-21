@@ -8,6 +8,15 @@
 //! Every variant is bounded. `Command` and `PatchRequest` in particular are
 //! executed by the peer, so an unbounded string from a compromised or buggy AI
 //! must not be able to exhaust the receiver's memory.
+//!
+//! # Advice and instruction are different messages
+//!
+//! Containment travels in two steps on purpose. Sentinel sends a
+//! [`ContainmentRecommendation`], which is advice; Core sends a
+//! [`ContainmentOrder`], which is the only message that may make Sentinel act
+//! on the host, and it names the person who approved it. A peer that
+//! receives a recommendation and acts on it has broken the rule this protocol
+//! exists to keep: the decision to change the machine belongs to a person.
 
 use crate::error::{Error, Result};
 
@@ -26,11 +35,12 @@ pub enum Message {
     Health(HealthReport),
     /// Core issues a natural-language or structured command. Core -> Sentinel.
     Command(Command),
-    /// Core asks Sentinel to contain an incident. Core -> Sentinel.
-    Contain {
-        incident_id: u64,
-        scope: ContainmentScope,
-    },
+    /// Sentinel recommends a containment. Advisory: nothing happens until Core
+    /// sends a [`Message::ContainmentOrder`]. Sentinel -> Core.
+    ContainmentRecommendation(ContainmentRecommendation),
+    /// Core orders a containment. The only message that may make Sentinel
+    /// change the state of the host. Core -> Sentinel.
+    ContainmentOrder(ContainmentOrder),
     /// Core proposes a self-repair patch. Requires explicit user approval
     /// before anything is applied; see `heimdall_core::gate`.
     PatchProposal(PatchProposal),
@@ -117,6 +127,95 @@ pub enum ContainmentScope {
     HostQuarantine,
 }
 
+impl ContainmentScope {
+    /// A short description, for the approval screen and the logs.
+    ///
+    /// Written in plain language on purpose: this string is what an operator
+    /// reads before deciding whether to let a defence tool act on the host.
+    pub fn label(&self) -> String {
+        match self {
+            Self::Address { cidr } => format!("block traffic to {cidr}"),
+            Self::Process { pid } => format!("suspend process {pid}"),
+            Self::Interface { name } => format!("disable interface {name}"),
+            Self::HostQuarantine => "quarantine the whole host".to_string(),
+        }
+    }
+
+    /// The scope's discriminant on the wire.
+    const fn tag(&self) -> u8 {
+        match self {
+            Self::Address { .. } => 0,
+            Self::Process { .. } => 1,
+            Self::Interface { .. } => 2,
+            Self::HostQuarantine => 3,
+        }
+    }
+
+    fn encode(&self, out: &mut Vec<u8>) -> Result<()> {
+        out.push(self.tag());
+        match self {
+            Self::Address { cidr } => put_str(out, cidr),
+            Self::Process { pid } => {
+                out.extend_from_slice(&pid.to_be_bytes());
+                Ok(())
+            }
+            Self::Interface { name } => put_str(out, name),
+            Self::HostQuarantine => Ok(()),
+        }
+    }
+
+    fn decode(cursor: &mut Cursor<'_>) -> Result<Self> {
+        match cursor.u8()? {
+            0 => Ok(Self::Address {
+                cidr: cursor.string()?,
+            }),
+            1 => Ok(Self::Process { pid: cursor.u32()? }),
+            2 => Ok(Self::Interface {
+                name: cursor.string()?,
+            }),
+            3 => Ok(Self::HostQuarantine),
+            other => Err(Error::Protocol(format!(
+                "unknown containment scope {other}"
+            ))),
+        }
+    }
+}
+
+/// Sentinel's advice about an incident.
+///
+/// A recommendation is not an instruction. It says what Sentinel believes
+/// should happen and why; the operator, through Core, decides whether it
+/// happens. A protocol that let a recommendation become an action would move
+/// the decision from a person to a heuristic, which is the one thing this
+/// project is built not to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainmentRecommendation {
+    /// The incident the recommendation is about.
+    pub incident_id: u64,
+    /// What Sentinel believes should be contained.
+    pub scope: ContainmentScope,
+    /// How urgent Sentinel considers it.
+    pub severity: Severity,
+    /// Why, in one sentence an operator can judge.
+    pub reason: String,
+}
+
+/// Core's instruction to contain an incident.
+///
+/// The order carries the name of whoever approved it. "The AI contained the
+/// host" and "an operator authorised the containment" are different events, and
+/// an audit log that cannot tell them apart is not an audit log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainmentOrder {
+    /// The incident to contain.
+    pub incident_id: u64,
+    /// What to contain.
+    pub scope: ContainmentScope,
+    /// Who authorised it. Never empty: an order without an author is refused
+    /// by the peer rather than acted on.
+    pub approved_by: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchProposal {
     pub proposal_id: u64,
@@ -157,14 +256,21 @@ impl CloseReason {
 }
 
 /// Wire tags. Stable: never reuse a value, only append.
+///
+/// Tag 5 carried `Contain`, the original order to contain an incident. It was
+/// retired when the order grew the name of its approver, and a peer that
+/// sends it is told so plainly rather than having its message half-understood.
 mod tag {
     pub const THREAT_ALERT: u8 = 1;
     pub const ACK: u8 = 2;
     pub const HEALTH: u8 = 3;
     pub const COMMAND: u8 = 4;
-    pub const CONTAIN: u8 = 5;
     pub const PATCH_PROPOSAL: u8 = 6;
     pub const CLOSE: u8 = 7;
+    pub const CONTAINMENT_RECOMMENDATION: u8 = 8;
+    pub const CONTAINMENT_ORDER: u8 = 9;
+    /// Retired. Rejected on decode; never reassigned.
+    pub const CONTAIN_RETIRED: u8 = 5;
 }
 
 impl Message {
@@ -200,26 +306,18 @@ impl Message {
                     put_str(&mut out, a)?;
                 }
             }
-            Self::Contain { incident_id, scope } => {
-                out.push(tag::CONTAIN);
-                out.extend_from_slice(&incident_id.to_be_bytes());
-                match scope {
-                    ContainmentScope::Address { cidr } => {
-                        out.push(0);
-                        put_str(&mut out, cidr)?;
-                    }
-                    ContainmentScope::Process { pid } => {
-                        out.push(1);
-                        out.extend_from_slice(&pid.to_be_bytes());
-                    }
-                    ContainmentScope::Interface { name } => {
-                        out.push(2);
-                        put_str(&mut out, name)?;
-                    }
-                    ContainmentScope::HostQuarantine => {
-                        out.push(3);
-                    }
-                }
+            Self::ContainmentRecommendation(r) => {
+                out.push(tag::CONTAINMENT_RECOMMENDATION);
+                out.extend_from_slice(&r.incident_id.to_be_bytes());
+                r.scope.encode(&mut out)?;
+                out.push(r.severity.as_u8());
+                put_str(&mut out, &r.reason)?;
+            }
+            Self::ContainmentOrder(o) => {
+                out.push(tag::CONTAINMENT_ORDER);
+                out.extend_from_slice(&o.incident_id.to_be_bytes());
+                o.scope.encode(&mut out)?;
+                put_str(&mut out, &o.approved_by)?;
             }
             Self::PatchProposal(p) => {
                 out.push(tag::PATCH_PROPOSAL);
@@ -283,21 +381,31 @@ impl Message {
                     arguments,
                 }))
             }
-            tag::CONTAIN => {
+            tag::CONTAINMENT_RECOMMENDATION => {
                 let incident_id = c.u64()?;
-                let scope = match c.u8()? {
-                    0 => ContainmentScope::Address { cidr: c.string()? },
-                    1 => ContainmentScope::Process { pid: c.u32()? },
-                    2 => ContainmentScope::Interface { name: c.string()? },
-                    3 => ContainmentScope::HostQuarantine,
-                    other => {
-                        return Err(Error::Protocol(format!(
-                            "unknown containment scope {other}"
-                        )));
-                    }
-                };
-                Ok(Self::Contain { incident_id, scope })
+                let scope = ContainmentScope::decode(&mut c)?;
+                let severity = Severity::from_u8(c.u8()?)?;
+                let reason = c.string()?;
+                Ok(Self::ContainmentRecommendation(ContainmentRecommendation {
+                    incident_id,
+                    scope,
+                    severity,
+                    reason,
+                }))
             }
+            tag::CONTAINMENT_ORDER => {
+                let incident_id = c.u64()?;
+                let scope = ContainmentScope::decode(&mut c)?;
+                let approved_by = c.string()?;
+                Ok(Self::ContainmentOrder(ContainmentOrder {
+                    incident_id,
+                    scope,
+                    approved_by,
+                }))
+            }
+            tag::CONTAIN_RETIRED => Err(Error::Protocol(
+                "the contain message was retired; use a containment order".into(),
+            )),
             tag::PATCH_PROPOSAL => Ok(Self::PatchProposal(PatchProposal {
                 proposal_id: c.u64()?,
                 target_path: c.string()?,
@@ -420,26 +528,31 @@ mod tests {
                 intent: "scan".into(),
                 arguments: vec!["/etc/shadow".into(), "--deep".into()],
             }),
-            Message::Contain {
+            Message::ContainmentRecommendation(ContainmentRecommendation {
                 incident_id: 9,
                 scope: ContainmentScope::Address {
                     cidr: "203.0.113.7/32".into(),
                 },
-            },
-            Message::Contain {
+                severity: Severity::High,
+                reason: "beaconing to a known command-and-control address".into(),
+            }),
+            Message::ContainmentOrder(ContainmentOrder {
                 incident_id: 10,
                 scope: ContainmentScope::Process { pid: 4242 },
-            },
-            Message::Contain {
+                approved_by: "operator@console".into(),
+            }),
+            Message::ContainmentOrder(ContainmentOrder {
                 incident_id: 11,
                 scope: ContainmentScope::Interface {
                     name: "eth0".into(),
                 },
-            },
-            Message::Contain {
+                approved_by: "operator@console".into(),
+            }),
+            Message::ContainmentOrder(ContainmentOrder {
                 incident_id: 12,
                 scope: ContainmentScope::HostQuarantine,
-            },
+                approved_by: "operator@console".into(),
+            }),
             Message::PatchProposal(PatchProposal {
                 proposal_id: 3,
                 target_path: "crates/heimdall-core/src/lib.rs".into(),
@@ -538,5 +651,36 @@ mod tests {
         assert!(Severity::Low < Severity::Medium);
         assert!(Severity::Medium < Severity::High);
         assert!(Severity::High < Severity::Critical);
+    }
+
+    #[test]
+    fn the_retired_contain_message_is_refused_rather_than_half_read() {
+        // Tag 5 used to mean "contain this". A peer that still speaks it must
+        // be told so, not have its message decoded as something else.
+        let mut buf = vec![tag::CONTAIN_RETIRED];
+        buf.extend_from_slice(&1u64.to_be_bytes());
+        buf.push(1);
+        buf.extend_from_slice(&42u32.to_be_bytes());
+        let err = Message::decode(&buf).expect_err("the retired tag must be refused");
+        assert!(err.to_string().contains("retired"), "got: {err}");
+    }
+
+    #[test]
+    fn a_scope_is_described_in_words_an_operator_can_judge() {
+        assert_eq!(
+            ContainmentScope::Process { pid: 4242 }.label(),
+            "suspend process 4242"
+        );
+        assert_eq!(
+            ContainmentScope::Address {
+                cidr: "203.0.113.7/32".into()
+            }
+            .label(),
+            "block traffic to 203.0.113.7/32"
+        );
+        assert_eq!(
+            ContainmentScope::HostQuarantine.label(),
+            "quarantine the whole host"
+        );
     }
 }

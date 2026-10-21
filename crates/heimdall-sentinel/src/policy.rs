@@ -87,9 +87,39 @@ impl Policy {
             }),
         }
     }
+
+    /// Builds a containment recommendation from a rate burst.
+    ///
+    /// A burst is evidence in its own right: an attack that stays inside its
+    /// historical range on every single sample is invisible to a point detector
+    /// and obvious here. But a burst alone is weaker evidence than a corroborated
+    /// multi-stream picture, so it produces a recommendation only from `Elevated`
+    /// upward, and its summary says the evidence is weak.
+    pub fn plan_containment_from_burst(
+        &self,
+        burst: &crate::correlate::Burst,
+        band: crate::correlate::RiskBand,
+    ) -> Option<ContainmentPlan> {
+        if band < crate::correlate::RiskBand::Elevated {
+            return None;
+        }
+        Some(ContainmentPlan {
+            summary: format!(
+                "Rate anomaly with no single extreme sample: {}. Cross-stream risk is {}. \
+                 Recommend rate limiting only, and confirm the traffic is expected.",
+                burst.describe(),
+                band.label()
+            ),
+            scope: ContainmentScope::Address {
+                cidr: burst.stream.clone(),
+            },
+            magnitude: burst.multiple,
+            requires_user_confirmation: true,
+        })
+    }
 }
 
-/// A recommendation. Nothing acts on this without the user saying yes.
+/// A recommendation. Nothing acts on this without the operator saying yes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContainmentPlan {
     pub summary: String,

@@ -35,6 +35,15 @@ jobs:
         with:
           key: ${{ matrix.os }}
 
+      # The voice pipeline captures the microphone through the platform audio
+      # API. On Linux that API is ALSA, whose headers are not installed on the
+      # runner images.
+      - name: System dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+
       - name: Formatting
         run: cargo fmt --all --check
 
@@ -97,4 +106,36 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.os }}
+      - name: System dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev
       - run: cargo build --release --workspace
+
+  deploy:
+    name: deployment artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The service definitions are part of the product: a unit that does not
+      # parse is a deployment that does not start, and nobody notices until a
+      # machine is down. They are checked here instead.
+      - name: Install the checking tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck libxml2-utils
+
+      - name: Shell scripts
+        run: shellcheck deploy/systemd/install.sh deploy/launchd/install.sh
+
+      - name: Service definitions
+        run: |
+          xmllint --noout deploy/launchd/com.heimdall.sentinel.plist
+          xmllint --noout deploy/windows/heimdall-sentinel-task.xml
+          # The unit refers to files that only exist on a deployed machine.
+          sudo touch /usr/local/bin/heimdall-sentinel
+          sudo chmod +x /usr/local/bin/heimdall-sentinel
+          sudo touch /etc/heimdall/passphrase
+          systemd-analyze verify deploy/systemd/heimdall-sentinel.service

@@ -219,6 +219,15 @@ impl Signer {
         use ed25519_dalek::Signer as _;
         self.key.sign(message).to_bytes()
     }
+
+    /// The secret scalar.
+    ///
+    /// Only the persistence layer needs this, and only to put the key in the
+    /// keystore. It is deliberately not reachable from a `SessionKeys` or a
+    /// `Handshake`: nothing on the message path can reach a long-term identity.
+    pub fn secret_bytes(&self) -> Secret<32> {
+        Secret::new(self.key.to_bytes().as_slice())
+    }
 }
 
 #[cfg(test)]

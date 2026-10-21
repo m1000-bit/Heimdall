@@ -20,4 +20,16 @@ pub enum Error {
 
     #[error("not connected to Sentinel")]
     NotConnected,
+
+    /// Peer identity and trust bookkeeping.
+    #[error("peer trust error: {0}")]
+    Link(String),
+
+    /// An approved change could not be written.
+    #[error("cannot apply the approved change: {0}")]
+    Apply(String),
+
+    /// Core refused to act on its own state.
+    #[error("{0}")]
+    Core(String),
 }

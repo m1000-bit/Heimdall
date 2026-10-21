@@ -1,0 +1,111 @@
+# Heimdall Sentinel -- host and network defence daemon.
+#
+# The posture this unit takes: the daemon can read the host, and can change
+# almost nothing. It runs as its own account, with a read-only view of the
+# filesystem, no network sockets of its own, and only the capabilities the
+# containment path needs. Everything it is allowed to do is visible below.
+#
+# Install with deploy/systemd/install.sh, which creates the account, the
+# directories and the credential this unit refers to.
+
+[Unit]
+Description=Heimdall Sentinel (host and network defence daemon)
+Documentation=file:/usr/share/doc/heimdall/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# The account. It is not in the sudo group, it has no login shell, and it
+# owns nothing outside the state directory below.
+User=heimdall
+Group=heimdall
+
+ExecStart=/usr/local/bin/heimdall-sentinel \
+    --endpoint /run/heimdall/heimdall-sentinel.sock \
+    --baseline /var/lib/heimdall/baselines/host.baseline \
+    --core-identity /run/heimdall/published/core.identity
+
+# The keystore passphrase is read from a credential, not from the command
+# line and not from the environment of every process on the box. The file
+# is root-owned and 0400; systemd hands it to this service alone.
+LoadCredential=passphrase:/etc/heimdall/passphrase
+ConditionPathExists=/etc/heimdall/passphrase
+
+# The data directory: keystore, published identity, learned baselines.
+StateDirectory=heimdall
+StateDirectoryMode=0700
+Environment=HEIMDALL_HOME=/var/lib/heimdall
+
+# The socket directory. It is created before the daemon starts and removed
+# when it stops, so a stale socket is never left behind for someone else to
+# connect to. The socket itself is 0660 and the group is the daemon's, which
+# is how the operator's tools reach it without becoming root. The group may
+# also write the directory, because that is where the operator's console
+# publishes its own identity for the daemon to pin.
+RuntimeDirectory=heimdall
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=restart
+Environment=HEIMDALL_SOCKET_MODE=660
+
+# The containment path suspends a process with kill -STOP and runs the
+# operator's hook for address and interface containment. Those are the only
+# privileged operations, and they are the only reasons for these two
+# capabilities. Without containment enabled, drop them: the daemon will
+# recommend and refuse, which is the default posture.
+AmbientCapabilities=CAP_KILL CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_KILL CAP_NET_ADMIN
+
+# No gaining privileges through setuid binaries, even the ones this unit
+# hands the daemon.
+NoNewPrivileges=true
+
+# The filesystem is read-only apart from the state directory and the runtime
+# directory. The daemon cannot write to the system it is defending.
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/heimdall /run/heimdall
+ReadOnlyPaths=/proc
+
+# The kernel is not the daemon's to change.
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# A private /tmp and /dev of its own.
+PrivateTmp=true
+PrivateDevices=true
+
+# Namespaces are how a sandbox is escaped from; this daemon creates none.
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# The system calls a service needs, and not the ones it does not. The group
+# includes @process, so the containment path can fork and run `kill`; the
+# error number is EPERM rather than SIGSYS, so a call that is refused fails
+# the operation instead of killing the daemon.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Nothing world-readable is created.
+UMask=0077
+
+# The daemon logs to stderr; the journal keeps it.
+StandardOutput=journal
+StandardError=journal
+Environment=RUST_LOG=info
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+
+[Install]
+WantedBy=multi-user.target

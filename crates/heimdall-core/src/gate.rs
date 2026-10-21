@@ -215,7 +215,7 @@ pub struct Application {
 }
 
 /// One immutable entry in the audit log.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AuditEntry {
     pub at: SystemTime,
     pub proposal_id: ProposalId,
@@ -225,7 +225,7 @@ pub struct AuditEntry {
     pub note: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AuditEvent {
     Submitted,
     Approved,
@@ -269,6 +269,12 @@ impl Entry {
     }
 }
 
+/// A destination for audit entries, so the log can outlive the process.
+pub trait AuditSink: Send {
+    /// Called once per recorded transition, in order.
+    fn record(&mut self, entry: &AuditEntry);
+}
+
 /// The gate itself.
 ///
 /// There is exactly one way to reach [`Gate::apply`], and it requires a token
@@ -283,6 +289,7 @@ pub struct Gate {
     approval_window: Duration,
     repository_root: std::path::PathBuf,
     clock: Clock,
+    sink: Option<Box<dyn AuditSink>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -328,6 +335,7 @@ impl Gate {
             approval_window: Duration::from_secs(300),
             repository_root,
             clock: Clock::System,
+            sink: None,
         }
     }
 
@@ -349,6 +357,22 @@ impl Gate {
     pub fn with_approval_window(mut self, window: Duration) -> Self {
         self.approval_window = window;
         self
+    }
+
+    /// Installs a sink that receives every transition as it happens.
+    /// Replacing a sink replaces the destination; the gate keeps its own
+    /// in-memory history either way.
+    pub fn set_sink(&mut self, sink: Box<dyn AuditSink>) {
+        self.sink = Some(sink);
+    }
+
+    /// The tree this gate is confined to.
+    ///
+    /// Exposed so the applier is bound to the same root the proposals were
+    /// validated against. Two different roots would mean an approval checked
+    /// against one tree and written into another.
+    pub fn repository_root(&self) -> &std::path::Path {
+        &self.repository_root
     }
 
     /// Submits a proposal for user review.
@@ -654,6 +678,11 @@ impl Gate {
             actor: actor.to_string(),
             note: note.to_string(),
         });
+        if let Some(sink) = self.sink.as_mut() {
+            if let Some(entry) = self.audit.last() {
+                sink.record(entry);
+            }
+        }
         tracing::info!(proposal = id, event = event.label(), actor, "commit gate");
     }
 }
@@ -1011,5 +1040,36 @@ mod tests {
         let rendered = format!("{g:?}");
         assert!(!rendered.contains("exfiltrate"));
         assert!(!rendered.contains("@@"));
+    }
+
+    struct RecordingSink {
+        events: std::sync::Arc<std::sync::Mutex<Vec<AuditEvent>>>,
+    }
+
+    impl AuditSink for RecordingSink {
+        fn record(&mut self, entry: &AuditEntry) {
+            if let Ok(mut guard) = self.events.lock() {
+                guard.push(entry.event);
+            }
+        }
+    }
+
+    #[test]
+    fn sink_receives_transitions_in_order() {
+        let mut g = gate();
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = RecordingSink {
+            events: events.clone(),
+        };
+        g.set_sink(Box::new(sink));
+        let id = submit_ok(&mut g);
+        let _token = g.approve(id, "user").unwrap();
+        let id2 = submit_ok(&mut g);
+        g.reject(id2, "user", "no").unwrap();
+        let recorded = events.lock().unwrap();
+        assert_eq!(recorded[0], AuditEvent::Submitted);
+        assert_eq!(recorded[1], AuditEvent::Approved);
+        assert_eq!(recorded[2], AuditEvent::Submitted);
+        assert_eq!(recorded[3], AuditEvent::Rejected);
     }
 }

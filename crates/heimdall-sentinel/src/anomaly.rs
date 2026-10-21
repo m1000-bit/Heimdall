@@ -86,7 +86,7 @@ pub const DEFAULT_DRIFT_FACTOR: f64 = 4.0;
 /// by (near) zero and fire on numerical noise.
 const MIN_SCALE: f64 = 1e-6;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct DetectorConfig {
     pub alpha: f64,
     pub alpha_scale: f64,
@@ -294,6 +294,16 @@ impl AnomalyEngine {
         self.scanned
     }
 
+    /// The configuration the baselines were learned under.
+    ///
+    /// Persisted with them: a baseline learned under a threshold of 5 is not
+    /// the same baseline under a threshold of 3, and the file has to say which
+    /// it is.
+    #[must_use]
+    pub fn config(&self) -> DetectorConfig {
+        self.config
+    }
+
     pub fn stream_count(&self) -> usize {
         self.streams.len()
     }
@@ -304,6 +314,67 @@ impl AnomalyEngine {
             .get(stream)
             .map(|b| (b.mean, b.scale, b.samples))
     }
+
+    /// Every stream's baseline, in the form it is persisted in.
+    ///
+    /// The reference comes with it: a baseline without its frozen reference
+    /// would come back from disk unable to tell a drift from a spike, which is
+    /// exactly the distinction the detector exists to make.
+    #[must_use]
+    pub fn snapshots(&self) -> Vec<BaselineSnapshot> {
+        let mut out: Vec<BaselineSnapshot> = self
+            .streams
+            .iter()
+            .map(|(name, b)| BaselineSnapshot {
+                stream: name.clone(),
+                mean: b.mean,
+                reference: b.reference,
+                scale: b.scale,
+                samples: b.samples,
+            })
+            .collect();
+        // Sorted, so the file is stable between saves and a diff of two saves
+        // shows what changed rather than what the hash map felt like.
+        out.sort_by(|a, b| a.stream.cmp(&b.stream));
+        out
+    }
+
+    /// Restores baselines that were persisted earlier.
+    ///
+    /// The samples counter comes back with them: a baseline with a sample
+    /// count of zero would make the detector treat the first observation after
+    /// a restart as the start of a cold stream, and the host would look
+    /// anomalous for a minute after every reboot.
+    pub fn restore(&mut self, snapshots: Vec<BaselineSnapshot>, scanned: u64) {
+        self.streams.clear();
+        for snapshot in snapshots {
+            self.streams.insert(
+                snapshot.stream.clone(),
+                Baseline {
+                    mean: snapshot.mean,
+                    reference: snapshot.reference,
+                    scale: snapshot.scale,
+                    samples: snapshot.samples,
+                },
+            );
+        }
+        self.scanned = scanned;
+    }
+}
+
+/// One stream's baseline, in the form it is persisted in.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BaselineSnapshot {
+    /// The stream's name.
+    pub stream: String,
+    /// The tracking mean.
+    pub mean: f64,
+    /// The frozen reference, once the stream has settled.
+    pub reference: Option<f64>,
+    /// The learned dispersion.
+    pub scale: f64,
+    /// How many samples the baseline has seen.
+    pub samples: u64,
 }
 
 impl Default for AnomalyEngine {

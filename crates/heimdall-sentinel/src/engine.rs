@@ -1,5 +1,15 @@
-//! The Sentinel runtime: event intake, detection, and reporting to Core.
+//! The Sentinel runtime: event intake, detection, correlation, and reporting.
+//!
+//! A detection is only raised once every stage has seen the sample, because the
+//! stages answer different questions and a stage that cannot see an event would
+//! silently narrow the others:
+//!
+//! 1. [`AnomalyEngine`] -- is this sample unusual for this stream?
+//! 2. [`Correlator`] -- is anything else unusual at the same time, and is the
+//!    rate up? A single spike and four agreeing streams are different incidents.
+//! 3. [`Policy`] -- given the corroborated risk, what is proportionate?
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -7,7 +17,9 @@ use heimdall_ipc::message::{HealthReport, Severity, ThreatAlert};
 
 use crate::{
     anomaly::{Anomaly, AnomalyEngine, DetectorConfig},
+    correlate::{CorrelatedAssessment, Correlator, RiskBand},
     policy::{ContainmentPlan, Policy},
+    source::streams,
 };
 
 /// A raw observation from a collection source.
@@ -21,6 +33,8 @@ pub struct Observation {
 pub struct Detection {
     pub alert: ThreatAlert,
     pub anomaly: Anomaly,
+    /// The cross-stream picture at the moment of the detection.
+    pub assessment: CorrelatedAssessment,
     /// Present when the policy recommends acting on the alert.
     pub containment: Option<ContainmentPlan>,
 }
@@ -33,14 +47,22 @@ pub struct HealthSnapshot {
     pub active_containments: u32,
     pub engine_load_permille: u16,
     pub sentinel_id: String,
+    /// Streams currently held above baseline.
+    pub streams_elevated: u32,
+    /// Highest risk band seen in the last assessment.
+    pub risk_band: RiskBand,
 }
 
 /// Sentinel's runtime state.
 pub struct Engine {
     id: String,
     anomaly: AnomalyEngine,
+    correlator: Correlator,
     policy: Policy,
     started: Instant,
+    /// Monotonic logical clock in seconds. Supplied to the correlator instead of
+    /// the wall clock so a replayed sequence is timestamped as recorded.
+    clock: f64,
     alerts_emitted: u64,
     containments_active: u32,
     next_alert_id: u64,
@@ -70,13 +92,30 @@ impl Engine {
         Self {
             id: id.into(),
             anomaly: AnomalyEngine::new(config),
+            correlator: Correlator::new().with_network_streams(
+                [streams::NETWORK_RECEIVED, streams::NETWORK_TRANSMITTED]
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
+            ),
             policy,
             started: Instant::now(),
+            clock: 0.0,
             alerts_emitted: 0,
             containments_active: 0,
             next_alert_id: 1,
             config,
         }
+    }
+
+    /// Advances the logical clock. Called once per poll cycle.
+    pub fn advance(&mut self, seconds: f64) {
+        self.clock += seconds.max(0.0);
+    }
+
+    /// The current logical time.
+    pub fn now(&self) -> f64 {
+        self.clock
     }
 
     pub fn id(&self) -> &str {
@@ -87,29 +126,66 @@ impl Engine {
         &self.policy
     }
 
-    /// Ingests one observation. Returns a detection when the value is anomalous.
+    /// Ingests one observation.
+    ///
+    /// The rate detector sees *every* sample, not only anomalous ones. Measuring
+    /// rate only on anomalies would mean the baseline is learned from exactly the
+    /// traffic that does not need watching.
     pub fn ingest(&mut self, obs: &Observation) -> Option<Detection> {
+        let burst = self
+            .correlator
+            .note_rate(&obs.stream, obs.value, self.clock);
         let anomaly = self.anomaly.observe(&obs.stream, obs.value)?;
+
+        let magnitude = anomaly.modified_z().abs() / self.config.threshold.max(f64::MIN_POSITIVE);
+        let burst_magnitude = burst.as_ref().map_or(0.0, |b| b.multiple);
+
+        self.correlator
+            .note_anomaly(&obs.stream, magnitude.max(burst_magnitude), self.clock);
+        let assessment = self.correlator.assess(self.clock);
+
         let alert_id = self.next_alert_id;
         self.next_alert_id += 1;
         self.alerts_emitted += 1;
 
-        let magnitude = anomaly.modified_z().abs() / self.config.threshold.max(f64::MIN_POSITIVE);
         let containment = self
             .policy
-            .plan_containment(&anomaly, self.config.threshold);
+            .plan_containment(&anomaly, self.config.threshold)
+            .or_else(|| {
+                // A rate burst is evidence even when no single sample was extreme.
+                burst
+                    .as_ref()
+                    .and_then(|b| self.policy.plan_containment_from_burst(b, assessment.band))
+            });
+
+        // `write!` rather than `push_str(&format!(..))`: this runs per detection, and
+        // the intermediate `String` is pure waste.
+        let mut summary = anomaly.describe();
+        if let Some(b) = &burst {
+            let _ = write!(summary, "; {}", b.describe());
+        }
+        let _ = write!(summary, "; {}", assessment.describe());
 
         Some(Detection {
             alert: ThreatAlert {
                 alert_id,
-                severity: severity_for(magnitude),
+                // Severity follows the corroborated risk, not the raw magnitude of
+                // one sample. A 40-sigma CPU spike with nothing corroborating it
+                // is less urgent than four agreeing streams including the network.
+                severity: severity_for_band(assessment.band, magnitude),
                 category: obs.stream.clone(),
-                summary: anomaly.describe(),
+                summary,
                 observed_at_unix: now_unix(),
             },
             anomaly,
+            assessment,
             containment,
         })
+    }
+
+    /// The current cross-stream picture, for the UI and for health reporting.
+    pub fn assess(&mut self) -> CorrelatedAssessment {
+        self.correlator.assess(self.clock)
     }
 
     /// Ingested events per second, scaled by 1000 so it fits in a `u16`.
@@ -123,18 +199,21 @@ impl Engine {
         (per_sec * 1000.0).clamp(0.0, f64::from(u16::MAX)) as u16
     }
 
-    pub fn health(&self) -> HealthSnapshot {
+    pub fn health(&mut self) -> HealthSnapshot {
+        let assessment = self.correlator.assess(self.clock);
         HealthSnapshot {
             uptime_secs: self.started.elapsed().as_secs(),
             events_scanned: self.anomaly.scanned(),
             active_containments: self.containments_active,
             engine_load_permille: self.engine_load_permille(),
             sentinel_id: self.id.clone(),
+            streams_elevated: assessment.anomalous_streams as u32,
+            risk_band: assessment.band,
         }
     }
 
     /// Renders the health snapshot as the message Core expects.
-    pub fn health_report(&self) -> HealthReport {
+    pub fn health_report(&mut self) -> HealthReport {
         let h = self.health();
         HealthReport {
             sentinel_id: h.sentinel_id,
@@ -163,7 +242,51 @@ impl Engine {
     /// the detector out of noticing.
     pub fn reset_streams(&mut self) {
         self.anomaly.reset_all();
+        self.correlator.reset();
     }
+
+    /// Forgets one stream's baseline. The deliberate way to accept that a single
+    /// metric has genuinely changed.
+    pub fn reset_stream(&mut self, stream: &str) -> bool {
+        let a = self.anomaly.reset_stream(stream);
+        self.correlator.reset_stream(stream);
+        a
+    }
+
+    /// The anomaly engine, for the baseline store.
+    ///
+    /// Exposed rather than duplicated: the store needs the detector's own
+    /// state, and a second copy of it would be a second thing to keep in step.
+    #[must_use]
+    pub fn anomaly(&self) -> &AnomalyEngine {
+        &self.anomaly
+    }
+
+    /// The anomaly engine, mutably, for the baseline store.
+    pub fn anomaly_mut(&mut self) -> &mut AnomalyEngine {
+        &mut self.anomaly
+    }
+
+    /// How many streams have a learned baseline.
+    #[must_use]
+    pub fn stream_count(&self) -> usize {
+        self.anomaly.stream_count()
+    }
+}
+
+/// Severity from the corroborated risk, with the raw magnitude as a floor.
+///
+/// Taking the maximum of the two means neither can be ignored: a severe band
+/// built on weak evidence still surfaces, and a single enormous spike in a quiet
+/// period is not downgraded because nothing corroborated it.
+fn severity_for_band(band: RiskBand, magnitude: f64) -> Severity {
+    let from_band = match band {
+        RiskBand::Low => Severity::Info,
+        RiskBand::Elevated => Severity::Medium,
+        RiskBand::High => Severity::High,
+        RiskBand::Severe => Severity::Critical,
+    };
+    from_band.max(severity_for(magnitude))
 }
 
 fn severity_for(magnitude: f64) -> Severity {

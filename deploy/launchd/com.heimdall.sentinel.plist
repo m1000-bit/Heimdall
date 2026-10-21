@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Heimdall Sentinel as a macOS launchd daemon.
+
+  macOS has no equivalent of the systemd sandbox, so the posture is thinner
+  here and says so: the daemon runs as its own account, with its own data
+  directory, and launchd keeps it running. The containment path is advisory
+  by default, exactly as on the other systems.
+
+  Install with deploy/launchd/install.sh, or copy this file into
+  /Library/LaunchDaemons and run: launchctl bootstrap system <path>
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.heimdall.sentinel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/heimdall-sentinel</string>
+        <string>--endpoint</string>
+        <string>/var/run/heimdall/heimdall-sentinel.sock</string>
+        <string>--baseline</string>
+        <string>/var/lib/heimdall/baselines/host.baseline</string>
+        <string>--core-identity</string>
+        <string>/var/run/heimdall/published/core.identity</string>
+    </array>
+
+    <!-- Run at boot and stay up. A daemon that defends a host is not much
+         use when the host is on and nothing is watching. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Its own account, with no shell and no home directory. -->
+    <key>UserName</key>
+    <string>heimdall</string>
+    <key>GroupName</key>
+    <string>heimdall</string>
+
+    <key>WorkingDirectory</key>
+    <string>/var/lib/heimdall</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HEIMDALL_HOME</key>
+        <string>/var/lib/heimdall</string>
+        <key>HEIMDALL_SOCKET_MODE</key>
+        <string>660</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <!-- The socket directory, created before the daemon starts. -->
+    <key>Sockets</key>
+    <dict>
+        <key>HeimdallSentinel</key>
+        <dict>
+            <key>SockPathName</key>
+            <string>/var/run/heimdall/heimdall-sentinel.sock</string>
+            <key>SockPathMode</key>
+            <integer>384</integer>
+            <key>SockOwnerName</key>
+            <string>heimdall</string>
+            <key>SockGroupName</key>
+            <string>heimdall</string>
+        </dict>
+    </dict>
+
+    <!-- Background work, with a modest ceiling: a defence daemon should not
+         be able to exhaust the machine it is defending. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>5</integer>
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>1024</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+
+    <!-- The log. A daemon that defends a host should leave a trail. -->
+    <key>StandardOutPath</key>
+    <string>/var/log/heimdall/sentinel.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/heimdall/sentinel.log</string>
+</dict>
+</plist>
