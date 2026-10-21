@@ -57,6 +57,9 @@ pub mod engine;
 pub mod policy;
 pub mod source;
 
+#[cfg(test)]
+mod profile;
+
 pub use anomaly::{Anomaly, AnomalyEngine, BaselineSnapshot, DetectorConfig};
 pub use baseline_store::{BaselineStore, StoreError};
 pub use containment::{ContainmentExecutor, ContainmentOutcome, ContainmentPolicy};

@@ -185,7 +185,7 @@ Stated plainly, because they are the things most likely to be wrong:
 cargo test --workspace
 ```
 
-344 tests, all passing, clippy clean. The security-relevant ones are worth knowing about:
+350 tests, all passing, clippy clean. The security-relevant ones are worth knowing about:
 
 - RFC 7748 X25519 and RFC 8439 ChaCha20-Poly1305 known-answer vectors.
 - Handshake negative cases: identity mismatch, forged signature, suite
@@ -195,6 +195,9 @@ cargo test --workspace
 - A channel under load: a burst of five thousand messages arrives whole and in
   order, and a frame whose ciphertext was altered, whose header claims a
   gigabyte, or that stops halfway is refused instead of trusted.
+- The daemon's cost: a tick of detection takes nine microseconds, does not get
+  slower as the samples pile up or as the streams multiply, and an alerting
+  sample costs the same as a quiet one.
 - Exhaustive truncation and single-bit-flip fuzzing of the message decoder.
 - A 798-run false-alarm sweep over the anomaly detector across 399 seeds and two
   cold-start window lengths.

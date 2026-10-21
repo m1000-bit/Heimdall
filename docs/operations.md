@@ -83,6 +83,38 @@ Three rules govern the file:
 To start over deliberately, delete the file and its `.salt` sidecar and
 restart the daemon.
 
+## What the daemon costs
+
+The daemon samples the machine every two seconds, decides whether the samples
+are unusual, and reports what it found. On a laptop the whole tick takes
+about four milliseconds, which is a fifth of a percent of the interval
+between two ticks.
+
+Almost all of that is the operating system, not Sentinel. Reading the
+counters is cheap: memory in ten microseconds, the CPU in twenty. The
+expensive part is re-enumerating the network interfaces, at three and a half
+milliseconds, because the source asks the operating system for the list of
+interfaces on every poll rather than reading the counters of the ones it
+already knows. Enumerating the disks costs a quarter of a millisecond.
+
+The detection itself -- the part this project owns, from a sample to a
+decision -- takes about one microsecond per sample, so nine microseconds for
+a whole tick of seven samples. It does not grow with the number of samples
+ingested: fifty thousand samples cost the same per sample as the first
+hundred, because the baselines are a mean and a spread, not a window. It
+does not grow with the number of streams either: a tick over thirty-two
+streams costs two and a half microseconds.
+
+An alerting sample costs the same as a quiet one, which matters more than it
+sounds: an attacker who can make every sample anomalous cannot make the
+daemon miss its next tick.
+
+The measurements are in `crates/heimdall-sentinel/src/profile.rs` and run
+with the rest of the tests. The one that would need revisiting if the budget
+ever shrank is the interface enumeration, and the fix is to keep the list
+and refresh the counters, at the price of not noticing a new interface for
+as long as the list is kept.
+
 ## Deploying
 
 See [`../deploy/README.md`](../deploy/README.md) for the service definitions
