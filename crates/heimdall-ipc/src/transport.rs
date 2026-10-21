@@ -110,6 +110,10 @@ impl Stream {
     pub async fn read_frame(&mut self) -> Result<Vec<u8>> {
         let mut header = [0u8; crate::frame::HEADER_LEN];
         read_exact(&mut self.inner, &mut header).await?;
+        // The decode refuses a length that is not believable, so the
+        // allocation below is bounded by the frame limit and not by whatever
+        // the peer claimed. A header is eighteen bytes; without that check
+        // it could ask for four gigabytes.
         let parsed = crate::frame::Header::decode(&header)?;
 
         let mut body = vec![0u8; parsed.ciphertext_len as usize];

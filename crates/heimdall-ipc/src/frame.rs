@@ -27,6 +27,14 @@ pub const HEADER_LEN: usize = 4 + 1 + 1 + 8 + 4;
 /// or a patch manifest, small enough that a bad length cannot exhaust memory.
 pub const MAX_PLAINTEXT_LEN: usize = 8 * 1024 * 1024;
 
+/// The largest wire frame: the largest plaintext plus the nonce and the tag.
+///
+/// Every length that arrives from the wire is checked against this before it
+/// is used to allocate. A header is eighteen bytes and can claim a length of
+/// four gigabytes, so a reader that trusts it will try to allocate four
+/// gigabytes on the say-so of a peer it has not authenticated yet.
+pub const MAX_FRAME_LEN: usize = MAX_PLAINTEXT_LEN + 12 + 16;
+
 /// Handshake flights are sent before any session key exists, so they travel
 /// cleartext with their own signature. Nothing but public keys, nonces and
 /// signatures goes in them.
@@ -107,10 +115,21 @@ impl Header {
         seq_bytes.copy_from_slice(&buf[6..14]);
         let mut len_bytes = [0u8; 4];
         len_bytes.copy_from_slice(&buf[14..18]);
+        let ciphertext_len = u32::from_be_bytes(len_bytes);
+        // The length is checked here, not by the callers, because this is the
+        // one place every frame passes through on its way in. A caller that
+        // allocates from the decoded length is then allocating from a length
+        // that has already been refused if it was not believable.
+        if ciphertext_len as usize > MAX_FRAME_LEN {
+            return Err(Error::FrameTooLarge {
+                max: MAX_FRAME_LEN,
+                actual: ciphertext_len as usize,
+            });
+        }
         Ok(Self {
             kind,
             seq: u64::from_be_bytes(seq_bytes),
-            ciphertext_len: u32::from_be_bytes(len_bytes),
+            ciphertext_len,
         })
     }
 }
@@ -174,9 +193,9 @@ pub fn split_frame_header(buf: &[u8]) -> Result<(Header, &[u8])> {
     if advertised < 12 + 16 {
         return Err(Error::Protocol("frame shorter than nonce + tag".into()));
     }
-    if advertised > MAX_PLAINTEXT_LEN + 12 + 16 {
+    if advertised > MAX_FRAME_LEN {
         return Err(Error::FrameTooLarge {
-            max: MAX_PLAINTEXT_LEN + 12 + 16,
+            max: MAX_FRAME_LEN,
             actual: advertised,
         });
     }
@@ -243,6 +262,41 @@ mod tests {
         assert!(Header::decode(&bytes).is_err());
 
         assert!(Header::decode(&bytes[..4]).is_err());
+    }
+
+    #[test]
+    fn a_length_beyond_the_cap_is_refused_by_the_header_itself() {
+        // The header is where every incoming frame passes through, so the
+        // cap is enforced there. A reader that allocates from a decoded
+        // length is then allocating from a length that has already been
+        // refused.
+        let bytes = Header {
+            kind: FrameKind::CoreToSentinel,
+            seq: 1,
+            ciphertext_len: u32::MAX,
+        }
+        .encode();
+        let err = Header::decode(&bytes).unwrap_err();
+        assert!(matches!(err, Error::FrameTooLarge { .. }), "{err:?}");
+
+        // Just over the cap is refused as well.
+        let bytes = Header {
+            kind: FrameKind::CoreToSentinel,
+            seq: 1,
+            ciphertext_len: u32::try_from(MAX_FRAME_LEN + 1).unwrap(),
+        }
+        .encode();
+        assert!(Header::decode(&bytes).is_err());
+
+        // Exactly at the cap is allowed: the cap is a ceiling, not a
+        // narrower limit.
+        let bytes = Header {
+            kind: FrameKind::CoreToSentinel,
+            seq: 1,
+            ciphertext_len: u32::try_from(MAX_FRAME_LEN).unwrap(),
+        }
+        .encode();
+        assert!(Header::decode(&bytes).is_ok());
     }
 
     #[test]

@@ -28,6 +28,9 @@ pub mod message;
 pub mod session;
 pub mod transport;
 
+#[cfg(test)]
+mod load;
+
 pub use error::{Error, Result};
 pub use message::{
     CloseReason, ContainmentOrder, ContainmentRecommendation, ContainmentScope, Message, Severity,

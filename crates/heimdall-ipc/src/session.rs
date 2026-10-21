@@ -91,6 +91,28 @@ impl Session {
         self.recv_seq
     }
 
+    /// Builds a session over a stream that is already established.
+    ///
+    /// Test-only. The handshake cannot be replayed from outside the crate,
+    /// so the tests that need a session over a stream they built themselves
+    /// -- an in-memory pipe, or one end of a pipe with the other end in
+    /// the test's hands -- use this instead of the public entry points.
+    #[cfg(test)]
+    pub(crate) fn for_test(side: Side, stream: Stream, keys: SessionKeys) -> Self {
+        let (send_seq, recv_seq) = match side {
+            Side::Core => (1, 0),
+            Side::Sentinel => (0, 1),
+        };
+        Session {
+            side,
+            stream,
+            keys,
+            send_seq,
+            recv_seq,
+            closing: false,
+        }
+    }
+
     /// Encrypts and writes one message.
     pub async fn send(&mut self, message: &Message) -> Result<()> {
         if self.closing {
