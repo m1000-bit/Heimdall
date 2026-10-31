@@ -485,6 +485,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    #[allow(clippy::redundant_closure_for_method_calls)]
     fn no_temporary_file_is_left_behind() {
         let dir = TempDir::new("tmpfile");
         let loc = dir.loc();
@@ -492,7 +493,6 @@ mod tests {
 
         let leftovers: Vec<_> = std::fs::read_dir(loc.path().parent().unwrap())
             .unwrap()
-            #[allow(clippy::redundant_closure_for_method_calls)]
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().to_string())
             .filter(|n| n.contains("tmp"))
