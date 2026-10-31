@@ -492,7 +492,7 @@ mod tests {
 
         let leftovers: Vec<_> = std::fs::read_dir(loc.path().parent().unwrap())
             .unwrap()
-            .filter_map(Result::ok)
+            .filter_map(Result::<_, std::io::Error>::ok)
             .map(|e| e.file_name().to_string_lossy().to_string())
             .filter(|n| n.contains("tmp"))
             .collect();
