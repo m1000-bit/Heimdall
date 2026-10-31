@@ -465,6 +465,17 @@ impl Gate {
         if p.is_absolute() {
             return Err(GateError::PathOutsideRepository(path.to_string()));
         }
+        // Windows absolute paths (e.g. `C:\Windows\...`) are not absolute on
+        // Linux, but they are still outside the repository. Reject them
+        // explicitly so the same test passes on every platform.
+        let mut bytes = path.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'\\' || bytes[2] == b'/')
+        {
+            return Err(GateError::PathOutsideRepository(path.to_string()));
+        }
         if p.components()
             .any(|c| matches!(c, std::path::Component::ParentDir))
         {
