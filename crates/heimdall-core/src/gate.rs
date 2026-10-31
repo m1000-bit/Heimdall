@@ -468,7 +468,7 @@ impl Gate {
         // Windows absolute paths (e.g. `C:\Windows\...`) are not absolute on
         // Linux, but they are still outside the repository. Reject them
         // explicitly so the same test passes on every platform.
-        let mut bytes = path.as_bytes();
+        let bytes = path.as_bytes();
         if bytes.len() >= 3
             && bytes[0].is_ascii_alphabetic()
             && bytes[1] == b':'
