@@ -8,7 +8,7 @@
 //! A gate that is merely a function call someone can forget to route through is
 //! not a gate. The design here makes bypass structurally awkward:
 //!
-//! 1. **Approval is bound to a content digest.** An [`Approval`] authorises one
+//! 1. **Approval is bound to a content digest.** An [`ApprovalToken`] authorises one
 //!    exact `target_path + diff + rationale`. Change a single byte of the diff
 //!    after the user says yes and the token no longer verifies. Without this,
 //!    the model could show a harmless diff, obtain approval, and apply a
@@ -277,9 +277,9 @@ pub trait AuditSink: Send {
 
 /// The gate itself.
 ///
-/// There is exactly one way to reach [`Gate::apply`], and it requires a token
-/// obtained from [`Gate::approve`]. A caller that skips approval cannot produce
-/// a valid token.
+/// There is exactly one way to reach the apply path -- [`Gate::consume`] --
+/// and it requires a token obtained from [`Gate::approve`]. A caller that
+/// skips approval cannot produce a valid token.
 pub struct Gate {
     entries: HashMap<ProposalId, Entry>,
     audit: Vec<AuditEntry>,
