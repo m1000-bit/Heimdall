@@ -63,7 +63,7 @@ impl Stream {
         #[cfg(unix)]
         let inner = platform::connect(endpoint).await?;
         #[cfg(windows)]
-        let inner = Self::inner_for(endpoint)?;
+        let inner = std::future::ready(Self::inner_for(endpoint)?).await;
         Ok(Self { inner })
     }
 
