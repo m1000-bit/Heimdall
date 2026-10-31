@@ -740,7 +740,7 @@ mod tests {
     fn taking_before_starting_gives_nothing() {
         let capture = AudioCapture::new(CaptureConfig::default());
         let audio = capture.take();
-        assert!(audio.samples.is_empty());
+        assert_eq!(audio.samples.len(), 0);
         assert_eq!(audio.sample_rate, 16_000);
         assert_eq!(audio.channels, 1);
     }

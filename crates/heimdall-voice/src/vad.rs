@@ -446,7 +446,7 @@ mod tests {
         let mut vad = VoiceActivityDetector::new(VadConfig::default());
         // A third of a frame: too short to analyse on its own.
         let odd: Vec<i16> = speech_like(100);
-        assert!(vad.process(&odd, RATE).is_empty());
+        assert_eq!(vad.process(&odd, RATE).len(), 0);
         let mut audio = speech_like(RATE_SAMPLES);
         audio.extend(silence(RATE_SAMPLES));
         let segments = vad.process(&audio, RATE);

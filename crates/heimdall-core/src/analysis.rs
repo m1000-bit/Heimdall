@@ -1674,7 +1674,7 @@ pub fn risky(text: &str) -> String {
     #[test]
     fn an_unchanged_file_has_no_diff() {
         let same = "a\nb\n";
-        assert!(unified_diff("sample.txt", same, same).is_empty());
+        assert_eq!(unified_diff("sample.txt", same, same), "");
     }
 
     #[test]
@@ -1725,7 +1725,7 @@ pub fn risky(text: &str) -> String {
         assert!(plan.diff.contains("+    v;"));
         assert_eq!(plan.edits.len(), 1);
         assert!(plan.summary.contains('1'));
-        assert!(!plan.rationale.is_empty());
+        assert_ne!(plan.rationale, "");
 
         std::fs::remove_dir_all(&root).ok();
     }

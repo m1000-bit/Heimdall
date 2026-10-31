@@ -964,7 +964,7 @@ mod tests {
             o.pending_patch().is_none(),
             "a finding is an observation, not a request to change something"
         );
-        assert!(o.audit_trail().is_empty());
+        assert_eq!(o.audit_trail().len(), 0);
     }
 
     #[test]
@@ -1040,7 +1040,7 @@ mod tests {
     #[test]
     fn a_containment_recommendation_waits_for_a_decision() {
         let mut o = orchestrator();
-        assert!(o.pending_containments().is_empty());
+        assert_eq!(o.pending_containments().len(), 0);
 
         o.observe_containment_recommendation(ContainmentRecommendation {
             incident_id: 7,
@@ -1053,7 +1053,7 @@ mod tests {
         let drained = o.drain_containment_recommendations();
         assert_eq!(drained.len(), 1);
         assert_eq!(drained[0].incident_id, 7);
-        assert!(o.pending_containments().is_empty());
+        assert_eq!(o.pending_containments().len(), 0);
     }
 
     #[test]

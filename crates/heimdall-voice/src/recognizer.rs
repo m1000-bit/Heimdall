@@ -621,7 +621,7 @@ mod tests {
         assert_eq!(CommandIntent::Status.label(), "status");
         assert_eq!(CommandIntent::ResetBaseline.label(), "reset-baseline");
         assert_eq!(CommandIntent::Unknown.label(), "unknown");
-        assert!(!CommandIntent::Scan.describe().is_empty());
+        assert_ne!(CommandIntent::Scan.describe(), "");
         assert_ne!(
             CommandIntent::Scan.describe(),
             CommandIntent::Status.describe()
