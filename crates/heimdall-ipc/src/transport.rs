@@ -259,9 +259,8 @@ mod platform {
     fn socket_modes(requested: Option<&str>) -> (u32, u32) {
         const DEFAULT_SOCKET: u32 = 0o600;
         const DEFAULT_DIR: u32 = 0o700;
-        let text = match requested {
-            Some(text) => text,
-            None => return (DEFAULT_SOCKET, DEFAULT_DIR),
+        let Some(text) = requested else {
+            return (DEFAULT_SOCKET, DEFAULT_DIR);
         };
         match u32::from_str_radix(text.trim(), 8) {
             Ok(mode) if (1..=0o777).contains(&mode) => {
