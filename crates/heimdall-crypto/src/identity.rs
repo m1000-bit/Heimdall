@@ -273,6 +273,7 @@ fn create_private_dir(path: &Path) -> Result<()> {
 fn write_private_file(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write as _;
     use std::os::unix::fs::OpenOptionsExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
 
     // `create(true).truncate(true).mode(0o600)`: the mode only applies when the
     // file is created, so a pre-existing world-readable file is not left as-is.
