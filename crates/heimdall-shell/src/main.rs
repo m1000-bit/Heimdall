@@ -433,7 +433,7 @@ impl eframe::App for Shell {
 
         let panel = egui::Frame::new()
             .fill(palette::PANEL)
-            .stroke(Stroke::new(1.0, palette::BORDER))
+            .stroke(Stroke::new(1.0_f32, palette::BORDER))
             .corner_radius(8.0)
             .inner_margin(10.0);
 
@@ -1016,7 +1016,7 @@ impl Shell {
         for recommendation in &self.containments {
             egui::Frame::new()
                 .fill(Color32::from_rgba_premultiplied(18, 24, 40, 230))
-                .stroke(Stroke::new(1.0, palette::WARN))
+                .stroke(Stroke::new(1.0_f32, palette::WARN))
                 .corner_radius(6.0)
                 .inner_margin(10.0)
                 .show(ui, |ui| {
@@ -1176,7 +1176,7 @@ impl Shell {
     fn proposal_ui(&mut self, ui: &mut egui::Ui, proposal: &PatchProposal) {
         egui::Frame::new()
             .fill(Color32::from_rgba_premultiplied(18, 24, 40, 230))
-            .stroke(Stroke::new(1.0, palette::WARN))
+            .stroke(Stroke::new(1.0_f32, palette::WARN))
             .corner_radius(6.0)
             .inner_margin(14.0)
             .show(ui, |ui| {
@@ -1725,7 +1725,7 @@ mod tests {
             reason: "test".into(),
         });
         shell.decline_containment(9);
-        assert!(shell.containments.is_empty());
+        assert_eq!(shell.containments.len(), 0);
         assert!(
             shell
                 .last_action
