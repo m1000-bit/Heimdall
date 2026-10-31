@@ -479,7 +479,7 @@ mod unix_tests {
         // is an absolute path. What matters is that it is not taken as a
         // path the user typed verbatim -- the name itself is preserved as
         // the final component.
-        assert!(path.file_name().unwrap() == "heimdall-sentinel.sock");
+        assert_eq!(path.file_name().unwrap().to_string_lossy(), "heimdall-sentinel.sock");
     }
 
     #[test]
