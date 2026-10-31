@@ -447,7 +447,7 @@ mod tests {
         let mut s = ReplaySource::flat(vec![obs("a", 1.0), obs("a", 2.0)]);
         assert_eq!(s.poll().len(), 1);
         assert_eq!(s.poll().len(), 1);
-        assert!(s.poll().is_empty());
+        assert_eq!(s.poll().len(), 0);
         assert!(s.is_exhausted());
         assert!(!s.is_healthy(), "an exhausted source must report unhealthy");
     }
@@ -456,7 +456,7 @@ mod tests {
     fn replay_can_loop_for_a_demo() {
         let mut s = ReplaySource::flat(vec![obs("a", 1.0)]).looping();
         assert_eq!(s.poll().len(), 1);
-        assert!(s.poll().is_empty());
+        assert_eq!(s.poll().len(), 0);
         assert!(!s.is_exhausted());
     }
 
@@ -468,7 +468,7 @@ mod tests {
         );
         assert_eq!(s.poll().len(), 2);
         assert_eq!(s.poll().len(), 1);
-        assert!(s.poll().is_empty());
+        assert_eq!(s.poll().len(), 0);
     }
 
     #[test]
@@ -535,7 +535,7 @@ mod tests {
         .join();
 
         // Sanity: the shared source still works.
-        assert!(!shared.poll_all().is_empty());
+        assert_ne!(shared.poll_all().len(), 0);
 
         // Now poison it for real.
         let shared = Arc::new(SharedSource::new(Box::new(Exploding)));
@@ -552,7 +552,7 @@ mod tests {
         assert!(shared.failure().is_some(), "the failure must be explained");
         assert_eq!(shared.source_name(), "exploding");
         // A disabled source stays disabled, rather than crashing on every poll.
-        assert!(shared.poll_all().is_empty());
+        assert_eq!(shared.poll_all().len(), 0);
         assert!(shared.unhealthy());
     }
 

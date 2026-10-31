@@ -175,7 +175,7 @@ mod tests {
             plan.requires_user_confirmation,
             "Sentinel must never contain a host on its own"
         );
-        assert!(!plan.summary.is_empty());
+        assert_ne!(plan.summary, "");
     }
 
     #[test]
