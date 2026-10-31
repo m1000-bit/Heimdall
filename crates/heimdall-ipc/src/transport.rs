@@ -256,7 +256,7 @@ mod platform {
     }
 
     /// The modes for a requested mode, or the private ones when there is none.
-    fn socket_modes(requested: Option<&str>) -> (u32, u32) {
+    pub(crate) fn socket_modes(requested: Option<&str>) -> (u32, u32) {
         const DEFAULT_SOCKET: u32 = 0o600;
         const DEFAULT_DIR: u32 = 0o700;
         let Some(text) = requested else {
@@ -475,7 +475,7 @@ mod unix_tests {
     fn a_named_endpoint_is_not_a_path() {
         let path = endpoint_path("heimdall-sentinel");
         assert!(path.ends_with("heimdall-sentinel.sock"));
-        assert!(!path.starts_with('/'), "{path:?} was taken as a path");
+        assert!(!path.starts_with("/"), "{path:?} was taken as a path");
     }
 
     #[test]

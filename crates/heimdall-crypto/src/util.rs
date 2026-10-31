@@ -101,7 +101,7 @@ mod tests {
         let mut cursor = &buf[..];
         assert_eq!(take_bytes(&mut cursor).unwrap(), b"ab");
         assert_eq!(take_bytes(&mut cursor).unwrap(), b"c");
-        assert!(cursor.is_empty());
+        assert_eq!(cursor.len(), 0);
         assert!(take_bytes(&mut cursor).is_err());
     }
 
