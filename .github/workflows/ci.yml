@@ -74,8 +74,8 @@ jobs:
       # the interpreter at all.
       - name: miri on heimdall-crypto and heimdall-ipc
         run: |
-          cargo miri test -p heimdall-crypto
-          cargo miri test -p heimdall-ipc --lib
+          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-crypto
+          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-ipc --lib
 
   audit:
     name: dependency audit
