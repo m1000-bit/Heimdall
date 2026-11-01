@@ -19,6 +19,8 @@ allow = [
     "OFL-1.1",
     "Ubuntu-font-1.0",
     "Unicode-3.0",
+    # Combined licenses (dual-licensed crates)
+    "MIT OR Apache-2.0",
 ]
 
 [bans]
@@ -30,7 +32,7 @@ skip = [
     { name = "clipboard-win", version = "5.4.1", reason = "yanked but required by arboard/eframe; no newer compatible version" },
 ]
 
-[bans.advisories]
+[advisories]
 # Unmaintained crates merged into zbus 6.0.0. Upgrading zbus from 4.x to 6.x
 # is a breaking API change requiring reworking the D-Bus integration in
 # accesskit_windows / accesskit_winit / egui-winit. Allowed pending a larger
