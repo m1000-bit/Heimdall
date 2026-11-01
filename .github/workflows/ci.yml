@@ -59,6 +59,9 @@ jobs:
   miri:
     name: miri (undefined behaviour)
     runs-on: ubuntu-latest
+    # rust-toolchain.toml pins stable; force nightly so the miri component applies.
+    env:
+      RUSTUP_TOOLCHAIN: nightly
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -137,5 +140,6 @@ jobs:
           # The unit refers to files that only exist on a deployed machine.
           sudo touch /usr/local/bin/heimdall-sentinel
           sudo chmod +x /usr/local/bin/heimdall-sentinel
+          sudo mkdir -p /etc/heimdall
           sudo touch /etc/heimdall/passphrase
           systemd-analyze verify deploy/systemd/heimdall-sentinel.service
