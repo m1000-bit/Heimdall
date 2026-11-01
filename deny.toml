@@ -15,12 +15,14 @@ allow = [
     "CC0-1.0",
     "Unlicense",
     "0BSD",
+    "Zlib",
+    "BSD-1-Clause",
+    "LGPL-2.1-or-later",
+    "BSL-1.0",
     # Font / content licenses (not code, but used by dependency assets)
     "OFL-1.1",
     "Ubuntu-font-1.0",
     "Unicode-3.0",
-    # Combined licenses (dual-licensed crates)
-    "MIT OR Apache-2.0",
 ]
 
 [bans]
@@ -33,18 +35,28 @@ skip = [
 ]
 
 [advisories]
-# Unmaintained crates merged into zbus 6.0.0. Upgrading zbus from 4.x to 6.x
-# is a breaking API change requiring reworking the D-Bus integration in
+# Ignore advisories that cannot be remediated by upgrading:
+#
+# zbus ecosystem crates (zbus_names, zvariant, zvariant_derive, zvariant_utils,
+# paste) are unmaintained but merged into zbus 6.0.0. Upgrading zbus from 4.x
+# to 6.x is a breaking API change requiring reworking the D-Bus integration in
 # accesskit_windows / accesskit_winit / egui-winit. Allowed pending a larger
-# migration; the crates are only used on Linux for accessibility.
-unmaintained = { allow = ["zbus_names", "zvariant", "zvariant_derive", "zvariant_utils", "paste", "ttf-parser"] }
-
-# quick-xml 0.30.0 has two vulnerabilities fixed in 0.41.0:
-# - RUSTSEC-2026-0194: Quadratic run time when checking start tag attributes
-# - RUSTSEC-2026-0195: Unbounded namespace-declaration allocation in NsReader
-# Upgrading requires updating zbus_xml → zbus-lockstep → atspi-common →
-# accesskit_atspi_common → accesskit_unix → accesskit_winit → egui-winit →
-# eframe, a deep dependency chain through the GUI stack. Allowed pending that
-# migration; quick-xml is only used to parse D-Bus introspection XML from the
-# local system, not untrusted network input.
-vulnerabilities = { allow = ["quick-xml"] }
+# migration; these crates are only used on Linux for accessibility.
+#
+# ttf-parser is unmaintained but structurally simple; used transitively through
+# ab_glyph → epaint → egui. Alternative skrifa exists but requires reworking
+# text rendering.
+#
+# quick-xml 0.30.0 has two vulnerabilities (RUSTSEC-2026-0194, RUSTSEC-2026-0195)
+# fixed in 0.41.0, but upgrading requires the deep zbus_xml → zbus-lockstep →
+# atspi-common → accesskit chain through the GUI stack. quick-xml only parses
+# local D-Bus introspection XML, not untrusted network input.
+ignore = [
+    "RUSTSEC-2026-0371",  # zbus_names
+    "RUSTSEC-2026-0370",  # zvariant
+    "RUSTSEC-2026-0372",  # zvariant_derive / zvariant_utils
+    "RUSTSEC-2024-0436",  # paste
+    "RUSTSEC-2026-0192",  # ttf-parser
+    "RUSTSEC-2026-0194",  # quick-xml
+    "RUSTSEC-2026-0195",  # quick-xml
+]
