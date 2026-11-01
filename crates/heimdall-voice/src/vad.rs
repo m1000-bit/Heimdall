@@ -452,4 +452,33 @@ mod tests {
         let segments = vad.process(&audio, RATE);
         assert_eq!(segments.len(), 1);
     }
+
+    #[test]
+    fn extreme_sample_values_do_not_crash() {
+        // i16::MIN is the loudest negative sample; dividing by 32768 must
+        // not overflow or produce a NaN that poisons the noise floor.
+        let mut vad = VoiceActivityDetector::new(VadConfig::default());
+        let loud = vec![i16::MIN; RATE_SAMPLES];
+        let segments = vad.process(&loud, RATE);
+        assert!(
+            vad.noise_floor_db().is_finite(),
+            "noise floor must stay finite with extreme samples"
+        );
+        assert!(segments.is_empty() || segments[0].peak_db.is_finite());
+    }
+
+    #[test]
+    fn empty_chunks_do_not_crash() {
+        let mut vad = VoiceActivityDetector::new(VadConfig::default());
+        for _ in 0..100 {
+            assert_eq!(vad.process(&[], RATE).len(), 0);
+        }
+    }
+
+    #[test]
+    fn zero_sample_rate_is_ignored() {
+        let mut vad = VoiceActivityDetector::new(VadConfig::default());
+        let segments = vad.process(&speech_like(100), 0);
+        assert!(segments.is_empty(), "a zero rate must produce nothing");
+    }
 }

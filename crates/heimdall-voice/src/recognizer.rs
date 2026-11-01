@@ -671,4 +671,47 @@ mod tests {
             .expect("the scripted recogniser must answer");
         assert_eq!(grammar.match_intent(&heard.text), CommandIntent::Scan);
     }
+
+    #[test]
+    fn hostile_input_is_rejected_safely() {
+        let grammar = Grammar::new();
+
+        // An empty utterance is not an intent.
+        assert_eq!(grammar.match_intent(""), CommandIntent::Unknown);
+        // Whitespace only is not an intent.
+        assert_eq!(grammar.match_intent("   "), CommandIntent::Unknown);
+        // Unicode and combining characters must not crash.
+        assert_eq!(
+            grammar.match_intent("scan\u{0301}\u{0302}\u{0303}"),
+            CommandIntent::Scan
+        );
+        // Case mixing still matches.
+        assert_eq!(
+            grammar.match_intent("ScAn tHe NeTwOrK"),
+            CommandIntent::Scan
+        );
+        // A very long utterance must not hang or misclassify.
+        let long = "scan ".repeat(10_000);
+        assert_eq!(
+            grammar.match_intent(&long),
+            CommandIntent::Scan,
+            "a long utterance containing a phrase must still match"
+        );
+        // A long utterance with no phrase is unknown.
+        let junk = "x ".repeat(10_000);
+        assert_eq!(
+            grammar.match_intent(&junk),
+            CommandIntent::Unknown,
+            "a long utterance with no phrase must be unknown"
+        );
+        // Approve and contain are not matched inside unrelated words.
+        assert_eq!(
+            grammar.match_intent("disapprove the plan"),
+            CommandIntent::Unknown
+        );
+        assert_eq!(
+            grammar.match_intent("uncontainable situation"),
+            CommandIntent::Unknown
+        );
+    }
 }

@@ -453,4 +453,89 @@ mod tests {
         let path = std::env::temp_dir().join("heimdall-does-not-exist.wav");
         assert!(matches!(Wav::read_from(&path), Err(VoiceError::Io(_))));
     }
+
+    #[test]
+    fn a_buffer_too_short_to_be_wav_is_an_error() {
+        assert!(matches!(
+            Wav::decode(&[0u8; 11]),
+            Err(VoiceError::Wav(_))
+        ));
+        assert!(matches!(
+            Wav::decode(&[]),
+            Err(VoiceError::Wav(_))
+        ));
+    }
+
+    #[test]
+    fn not_a_riff_wave_file_is_an_error() {
+        assert!(matches!(
+            Wav::decode(b"NOTARIFFWAVE"),
+            Err(VoiceError::Wav(_))
+        ));
+        assert!(matches!(
+            Wav::decode(b"RIFF????NOPE"),
+            Err(VoiceError::Wav(_))
+        ));
+    }
+
+    #[test]
+    fn a_truncated_chunk_header_is_an_error() {
+        // RIFF/WAVE header (12 bytes) plus a chunk id but no size.
+        let mut bytes = b"RIFF????WAVEfmt ".to_vec();
+        bytes.resize(15, 0);
+        assert!(matches!(Wav::decode(&bytes), Err(VoiceError::Wav(_))));
+    }
+
+    #[test]
+    fn a_chunk_size_that_runs_past_the_buffer_is_an_error() {
+        let mut bytes = b"RIFF????WAVE".to_vec();
+        // fmt chunk claiming a huge body.
+        bytes.extend_from_slice(b"fmt ");
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.resize(20, 0);
+        assert!(matches!(Wav::decode(&bytes), Err(VoiceError::Wav(_))));
+    }
+
+    #[test]
+    fn a_non_pcm_format_is_an_error() {
+        let mut bytes = build_wav_header(1, 16_000, 0, 0xFFFF); // WAVE_FORMAT_EXTENSIBLE-ish bogus
+        bytes.extend_from_slice(&[0u8; 100]);
+        assert!(matches!(Wav::decode(&bytes), Err(VoiceError::Wav(_))));
+    }
+
+    #[test]
+    fn zero_channels_is_an_error() {
+        let mut bytes = build_wav_header(0, 16_000, 0, FORMAT_PCM);
+        bytes.extend_from_slice(&[0u8; 100]);
+        assert!(matches!(Wav::decode(&bytes), Err(VoiceError::Wav(_))));
+    }
+
+    #[test]
+    fn zero_sample_rate_is_an_error() {
+        let mut bytes = build_wav_header(1, 0, 0, FORMAT_PCM);
+        bytes.extend_from_slice(&[0u8; 100]);
+        assert!(matches!(Wav::decode(&bytes), Err(VoiceError::Wav(_))));
+    }
+
+    /// Builds a minimal RIFF/WAVE header with a fmt chunk and a data chunk.
+    fn build_wav_header(channels: u16, sample_rate: u32, data_len: usize, format: u16) -> Vec<u8> {
+        let block_align = usize::from(channels) * 2;
+        let byte_rate = sample_rate * block_align as u32;
+        let riff_len = 36 + data_len as u32;
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&riff_len.to_le_bytes());
+        out.extend_from_slice(b"WAVE");
+        out.extend_from_slice(b"fmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&format.to_le_bytes());
+        out.extend_from_slice(&channels.to_le_bytes());
+        out.extend_from_slice(&sample_rate.to_le_bytes());
+        out.extend_from_slice(&byte_rate.to_le_bytes());
+        out.extend_from_slice(&(block_align as u16).to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&(data_len as u32).to_le_bytes());
+        out
+    }
 }
