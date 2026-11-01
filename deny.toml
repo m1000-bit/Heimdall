@@ -1,0 +1,106 @@
+# cargo-deny configuration for Heimdall
+#
+# Allows the licenses used by the dependency graph and records allowances for
+# advisories that cannot be remediated by upgrading (unmaintained crates merged
+# into upstream projects, or where no safe upgrade exists).
+
+[licenses]
+allow = [
+    # Permissive, OSI-approved, FSF Free/Libre
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "Unlicense",
+    "0BSD",
+    # Font / content licenses (not code, but used by dependency assets)
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "Unicode-3.0",
+    # Combined / dual licenses
+    "MIT OR Apache-2.0",
+    "MIT OR Apache-2.0 OR BSD-1-Clause",
+    "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+    "MIT OR Apache-2.0 OR Zlib",
+    "MIT OR Zlib OR Apache-2.0",
+    "Zlib OR Apache-2.0 OR MIT",
+    "MIT / Apache-2.0",
+    "MIT/Apache-2.0",
+    "BSD-2-Clause OR Apache-2.0 OR MIT",
+    "BSD-3-Clause OR Apache-2.0 OR MIT",
+    # Public domain
+    "(MIT OR Apache-2.0)",
+]
+
+[bans]
+# crates that are yanked but still required by the dependency graph
+skip = [
+    # clipboard-win 5.4.1 is yanked but required by arboard → egui-winit → eframe
+    # No newer version exists that arboard depends on; upgrading arboard/eframe
+    # is a larger migration. The crate is only used on Windows clipboard.
+    { name = "clipboard-win", version = "5.4.1", reason = "yanked but required by arboard/eframe; no newer compatible version" },
+]
+
+# Unmaintained crates merged into zbus 6.0.0. Upgrading zbus from 4.x to 6.x
+# is a breaking API change requiring reworking the D-Bus integration in
+# accesskit_windows / accesskit_winit / egui-winit. Allowed pending a larger
+# migration; the crates are only used on Linux for accessibility.
+[[bans.advisories]]
+name = "zbus_names"
+id = "RUSTSEC-2026-0371"
+reason = "unmaintained but merged into zbus 6.0.0; no safe upgrade path without breaking API changes"
+
+[[bans.advisories]]
+name = "zvariant"
+id = "RUSTSEC-2026-0370"
+reason = "unmaintained but merged into zbus 6.0.0; no safe upgrade path without breaking API changes"
+
+[[bans.advisories]]
+name = "zvariant_derive"
+id = "RUSTSEC-2026-0372"
+reason = "unmaintained but merged into zbus 6.0.0; no safe upgrade path without breaking API changes"
+
+[[bans.advisories]]
+name = "zvariant_utils"
+id = "RUSTSEC-2026-0372"
+reason = "part of zvariant ecosystem, merged into zbus 6.0.0; no safe upgrade path"
+
+[[bans.advisories]]
+name = "paste"
+id = "RUSTSEC-2024-0436"
+reason = "unmaintained but structurally simple macro crate; used transitively through accesskit_windows → egui-winit; no safe upgrade path"
+
+[[bans.advisories]]
+name = "ttf-parser"
+id = "RUSTSEC-2026-0192"
+reason = "unmaintained but structurally simple font parser; used transitively through ab_glyph → epaint → egui; alternative skrifa exists but requires reworking text rendering"
+
+[vulnerabilities]
+# quick-xml 0.30.0 has two vulnerabilities fixed in 0.41.0:
+# - RUSTSEC-2026-0194: Quadratic run time when checking start tag attributes
+# - RUSTSEC-2026-0195: Unbounded namespace-declaration allocation in NsReader
+# Upgrading requires updating zbus_xml → zbus-lockstep → atspi-common →
+# accesskit_atspi_common → accesskit_unix → accesskit_winit → egui-winit →
+# eframe, a deep dependency chain through the GUI stack. Allowed pending that
+# migration; quick-xml is only used to parse D-Bus introspection XML from the
+# local system, not untrusted network input.
+[[vulnerabilities.advisories]]
+name = "quick-xml"
+id = "RUSTSEC-2026-0194"
+reason = "DoS in XML attribute checking; fixed in 0.41.0 but requires upgrading the full zbus_xml → zbus-lockstep → atspi-common chain"
+
+[[vulnerabilities.advisories]]
+name = "quick-xml"
+id = "RUSTSEC-2026-0195"
+reason = "DoS in NsReader namespace allocation; fixed in 0.41.0 but requires upgrading the full zbus_xml → zbus-lockstep → atspi-common chain"
+
+[unsafe]
+# No unsafe code is allowed in the workspace (enforced by unsafe_code = "forbid"
+# in Cargo.toml). This section is kept for completeness.
+skip = []
+
+[sources]
+# No source restrictions; crates.io and git dependencies are both used.
+skip = []
