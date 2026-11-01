@@ -19,8 +19,6 @@ allow = [
     "OFL-1.1",
     "Ubuntu-font-1.0",
     "Unicode-3.0",
-    # Combined licenses (dual-licensed crates)
-    "MIT OR Apache-2.0",
 ]
 
 [bans]
