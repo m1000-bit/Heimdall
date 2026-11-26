@@ -32,6 +32,9 @@ skip = [
     # No newer version exists that arboard depends on; upgrading arboard/eframe
     # is a larger migration. The crate is only used on Windows clipboard.
     { name = "clipboard-win", version = "5.4.1", reason = "yanked but required by arboard/eframe; no newer compatible version" },
+    # async-executor 1.14.0 is yanked but required by accesskit_unix → egui-winit → eframe
+    # Used for Linux accessibility. No newer compatible version available.
+    { name = "async-executor", version = "1.14.0", reason = "yanked but required by accesskit_unix/egui-winit; no newer compatible version" },
 ]
 
 [advisories]

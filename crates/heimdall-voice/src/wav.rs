@@ -456,14 +456,8 @@ mod tests {
 
     #[test]
     fn a_buffer_too_short_to_be_wav_is_an_error() {
-        assert!(matches!(
-            Wav::decode(&[0u8; 11]),
-            Err(VoiceError::Wav(_))
-        ));
-        assert!(matches!(
-            Wav::decode(&[]),
-            Err(VoiceError::Wav(_))
-        ));
+        assert!(matches!(Wav::decode(&[0u8; 11]), Err(VoiceError::Wav(_))));
+        assert!(matches!(Wav::decode(&[]), Err(VoiceError::Wav(_))));
     }
 
     #[test]

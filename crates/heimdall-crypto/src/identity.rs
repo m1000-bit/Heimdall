@@ -316,8 +316,10 @@ mod tests {
     use super::*;
     use crate::kdf::Passphrase;
 
+    #[cfg(not(miri))]
     struct TempDir(PathBuf);
 
+    #[cfg(not(miri))]
     impl TempDir {
         fn new(tag: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
@@ -335,12 +337,14 @@ mod tests {
         }
     }
 
+    #[cfg(not(miri))]
     impl Drop for TempDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
 
+    #[cfg(not(miri))]
     fn pass() -> Passphrase {
         Passphrase::from_utf8(b"Tr0ub4dor&3xKcd!a-long-enough-passphrase")
     }
