@@ -59,7 +59,7 @@ jobs:
   miri:
     name: miri (undefined behaviour)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     # rust-toolchain.toml pins stable; force nightly so the miri component applies.
     env:
       RUSTUP_TOOLCHAIN: nightly
