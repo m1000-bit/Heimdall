@@ -313,7 +313,9 @@ pub fn scrub(buf: &mut [u8]) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(miri))]
     use super::*;
+    #[cfg(not(miri))]
     use crate::kdf::Passphrase;
 
     #[cfg(not(miri))]
