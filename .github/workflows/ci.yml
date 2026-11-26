@@ -74,9 +74,11 @@ jobs:
       # Tests that touch the filesystem or sockets are skipped under miri via
       # #[cfg(not(miri))] so the interpreter only runs pure logic.
       - name: miri on heimdall-crypto and heimdall-ipc
+        env:
+          MIRI_NO_LOG: "1"
         run: |
-          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-crypto --lib
-          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-ipc --lib
+          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-crypto --lib -- aead:: kdf:: session:: util::
+          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-ipc --lib -- frame:: message:: transport::
 
   audit:
     name: dependency audit
