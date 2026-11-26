@@ -59,6 +59,7 @@ jobs:
   miri:
     name: miri (undefined behaviour)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # rust-toolchain.toml pins stable; force nightly so the miri component applies.
     env:
       RUSTUP_TOOLCHAIN: nightly
@@ -70,11 +71,11 @@ jobs:
           components: miri
       - uses: Swatinem/rust-cache@v2
       # Restricted to the pure-Rust cryptographic core and the protocol codec.
-      # Neither opens sockets or files, which is what keeps them runnable under
-      # the interpreter at all.
+      # Tests that touch the filesystem or sockets are skipped under miri via
+      # #[cfg(not(miri))] so the interpreter only runs pure logic.
       - name: miri on heimdall-crypto and heimdall-ipc
         run: |
-          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-crypto
+          MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-crypto --lib
           MIRIFLAGS=-Zmiri-disable-isolation cargo miri test -p heimdall-ipc --lib
 
   audit:

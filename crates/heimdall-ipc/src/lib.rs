@@ -29,6 +29,7 @@ pub mod session;
 pub mod transport;
 
 #[cfg(test)]
+#[cfg(not(miri))]
 mod load;
 
 pub use error::{Error, Result};

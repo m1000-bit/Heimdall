@@ -267,6 +267,7 @@ pub async fn accept_as_sentinel(
 }
 
 #[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
     use crate::message::{HealthReport, PatchProposal, Severity, ThreatAlert};

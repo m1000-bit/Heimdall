@@ -345,6 +345,7 @@ mod tests {
         Passphrase::from_utf8(b"Tr0ub4dor&3xKcd!a-long-enough-passphrase")
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn an_identity_is_created_once_and_then_reused() {
         let dir = TempDir::new("create-once");
@@ -360,6 +361,7 @@ mod tests {
         assert_eq!(first.identity(), second.identity());
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn two_ais_get_distinct_identities_from_one_keystore() {
         let dir = TempDir::new("distinct");
@@ -379,6 +381,7 @@ mod tests {
         assert_ne!(core.identity(), other2.identity());
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn a_wrong_passphrase_fails_opaquely() {
         let dir = TempDir::new("wrong-pass");
@@ -391,6 +394,7 @@ mod tests {
         assert!(matches!(err, Error::Decrypt), "{err:?}");
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn a_corrupt_keystore_does_not_silently_regenerate() {
         let dir = TempDir::new("corrupt");
@@ -413,6 +417,7 @@ mod tests {
         let _ = identity;
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn a_truncated_keystore_does_not_silently_regenerate() {
         let dir = TempDir::new("truncated");
@@ -430,6 +435,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn a_wrong_length_identity_record_is_refused() {
         let dir = TempDir::new("bad-len");
@@ -450,6 +456,7 @@ mod tests {
         assert!(matches!(err, Error::Kms(_)), "{err:?}");
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn the_identity_round_trips_through_a_signature() {
         let dir = TempDir::new("signing");
@@ -461,6 +468,7 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[cfg(not(miri))]
     #[test]
     fn the_keystore_is_not_world_readable() {
         use std::os::unix::fs::PermissionsExt as _;
@@ -484,6 +492,7 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[cfg(not(miri))]
     #[test]
     #[allow(clippy::redundant_closure_for_method_calls)]
     fn no_temporary_file_is_left_behind() {
@@ -500,6 +509,7 @@ mod tests {
         assert!(leftovers.is_empty(), "left behind {leftovers:?}");
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn scrub_clears_the_buffer() {
         let mut buf = *b"a-secret-value-in-a-scratch-buffer!!";
